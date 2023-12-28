@@ -127,13 +127,26 @@ static void waitForOrder()
 {
     if (semDown(semgid, sh->waitOrder) == -1)
     {
+        perror("error on the down operation for semaphore access");
+        exit(EXIT_FAILURE);
+    }
+
+    if (semDown(semgid, sh->mutex) == -1)
+    {
         perror("error on the down operation for semaphore access (Chef)");
         exit(EXIT_FAILURE);
     }
 
-    // Chef aguarda a ordem do pedido
-    sh->fSt.st.chefStat = WAIT_FOR_ORDER;
+    lastGroup = sh->fSt.foodGroup;
+    
+    sh->fSt.st.chefStat = COOK;
     saveState(nFic, &sh->fSt);
+
+    if (semUp(semgid, sh->orderReceived) == -1)
+    {
+        perror("error on the down operation for semaphore access");
+        exit(EXIT_FAILURE);
+    }
 
     if (semUp(semgid, sh->mutex) == -1)
     {
@@ -154,35 +167,37 @@ static void processOrder()
 {
     usleep((unsigned int)floor((MAXCOOK * random()) / RAND_MAX + 100.0));
 
+    if (semDown(semgid, sh->waiterRequestPossible) == -1)
+    {
+        perror("error on the down operation for semaphore access");
+        exit(EXIT_FAILURE);
+    }
+
+    //entrada na zona critica
     if (semDown(semgid, sh->mutex) == -1)       // down no mutex (identificador para o semaforo associado ao acesso à memoria partilhada)
     {
         perror("error on the down operation for semaphore access (Chef)");
         exit(EXIT_FAILURE);
     }
 
-    // Chef está a cozinhar
-    sh->fSt.st.chefStat = COOK;
+
+    sh->fSt.waiterRequest.reqType = FOODREADY;
+    sh->fSt.waiterRequest.reqGroup = lastGroup;
+
+
+    sh->fSt.st.chefStat = WAIT_FOR_FOOD;
     saveState(nFic, &sh->fSt);
 
+
     if (semUp(semgid, sh->mutex) == -1)
     {
         perror("error on the up operation for semaphore access (Chef)");
         exit(EXIT_FAILURE);
     }
-
-    if (semDown(semgid, sh->orderReceived) == -1)
+    
+    if (semUp(semgid, sh->waiterRequest) == -1)
     {
-        perror("error on the down operation for semaphore access (Chef)");
-        exit(EXIT_FAILURE);
-    }
-
-    // Chef descansa após entregar o pedido
-    sh->fSt.st.chefStat = REST;     //alterar estado do chef
-    saveState(nFic, &sh->fSt);      //guardar estado
-
-    if (semUp(semgid, sh->mutex) == -1)
-    {
-        perror("error on the up operation for semaphore access (Chef)");
+        perror("error on the down operation for semaphore access");
         exit(EXIT_FAILURE);
     }
 }
